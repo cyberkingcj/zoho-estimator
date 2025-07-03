@@ -184,7 +184,7 @@ elif menu == "Download Estimate":
         df = pd.DataFrame(estimates)
         df['date'] = pd.to_datetime(df['date']).dt.date
         df = df[['estimate_id', 'estimate_number', 'reference_number', 'customer_name', 'date', 'total']]
-        st.dataframe(df)
+        # st.dataframe(df)
 
         selected = st.selectbox("Select Estimate", df['estimate_number'])
         if selected:
