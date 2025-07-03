@@ -5,6 +5,8 @@ from zoho_api import fetch_items, create_estimate, fetch_estimates, download_est
 import pandas as pd
 import base64
 from thefuzz import process
+from streamlit.components.v1 import html
+import tempfile
 
 st.set_page_config(page_title="Zoho Estimator", layout="wide")
 st.title("Zoho Estimate Generator")
@@ -193,10 +195,35 @@ elif menu == "Download Estimate":
             pdf_data = download_estimate_pdf(estimate_id)
 
             base64_pdf = base64.b64encode(pdf_data).decode('utf-8')
-            pdf_display = f"""
-            <object data="data:application/pdf;base64,{base64_pdf}" type="application/pdf" width="100%" height="700">
-                <p>It appears you don't have a PDF plugin for this browser.
-                You can <a href="data:application/pdf;base64,{base64_pdf}" download="{selected}.pdf">click here to download the PDF file.</a></p>
-            </object>
-            """
-            st.markdown(pdf_display, unsafe_allow_html=True)
+            
+            # Save PDF to temporary file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                tmp_file.write(pdf_data)
+                tmp_path = tmp_file.name
+
+            # Serve PDF via Streamlit’s file serving
+            # st.download_button("📥 Download PDF", pdf_data, file_name=f"{selected}.pdf")
+
+            # Preview via iframe using file path (mobile-safe)
+            with open(tmp_path, "rb") as f:
+                base64_pdf = base64.b64encode(f.read()).decode('utf-8')
+
+            st.markdown("### Preview")
+            st.markdown(
+                f"""
+                <iframe
+                    src="data:application/pdf;base64,{base64_pdf}"
+                    width="100%"
+                    height="600"
+                    style="border: none;">
+                </iframe>
+                """,
+                unsafe_allow_html=True
+            )
+            # pdf_display = f"""
+            # <object data="data:application/pdf;base64,{base64_pdf}" type="application/pdf" width="100%" height="700">
+            #     <p>It appears you don't have a PDF plugin for this browser.
+            #     You can <a href="data:application/pdf;base64,{base64_pdf}" download="{selected}.pdf">click here to download the PDF file.</a></p>
+            # </object>
+            # """
+            # st.markdown(pdf_display, unsafe_allow_html=True)
