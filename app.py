@@ -95,6 +95,15 @@ if menu == "Create New Estimate":
         "Amount": 0.0,
     }))
 
+    # Display current line items in read-only format
+    if st.session_state.line_items:
+        st.subheader("📋 Item Summary")
+        display_df = pd.DataFrame(st.session_state.line_items)
+        display_df = display_df[["Description", "Quantity", "Price", "Amount"]]
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+    st.divider()
+
     total_amount = sum(row["Amount"] for row in st.session_state.line_items)
 
     st.divider()
