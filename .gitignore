@@ -1,3 +1,5 @@
 .env
 __pycache__
 *.pyc
+items_cache.json
+token_cache.json
