@@ -33,7 +33,7 @@ def fetch_items():
     data = response.json()
     items = data.get("items", [])
 
-    item_dict = {item['name']: item for item in items}
+    item_dict = {item['name']: item for item in items if item['status'] == "active"}
 
     # Save to cache
     with open(CACHE_FILE, "w") as f:
