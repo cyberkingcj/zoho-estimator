@@ -53,7 +53,7 @@ def create_estimate(estimate_data):
 def fetch_estimates():
     url = f"{BASE_URL}/estimates?organization_id={ORG_ID}&sort_column=estimate_number&sort_order=D"
     response = requests.get(url, headers=HEADERS)
-    print(response.json())
+    # print(response.json())
     return response.json().get("estimates", [])
 
 def download_estimate_pdf(estimate_id):
