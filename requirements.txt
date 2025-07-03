@@ -1,0 +1,7 @@
+streamlit
+pandas
+thefuzz
+requests
+python-dateutil
+thefuzz[speedup]
+dotenv
