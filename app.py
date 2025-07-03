@@ -84,7 +84,7 @@ if menu == "Create New Estimate":
                 "Price": price,
                 "Amount": amount,
             })
-
+        st.divider()
     # Update line items
     st.session_state.line_items = updated_items
 
