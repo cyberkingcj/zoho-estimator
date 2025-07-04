@@ -42,9 +42,12 @@ def refresh_access_token():
         access_token = data["access_token"]
         expires_in = data.get("expires_in", 3600)
         save_token_cache(access_token, expires_in)
+        print("Access token refreshed successfully", flush=True)
+        print(f"New token expires at: {time.ctime(time.time() + expires_in)}", flush=True)
+        print(f"Current time: {time.ctime(time.time())}", flush=True)
         return access_token
     else:
-        raise Exception(f"Failed to refresh token: {response.text}")
+        raise Exception(f"Failed to refresh token: {response.text}", flush=True)
 
 def get_access_token():
     cache = load_token_cache()
