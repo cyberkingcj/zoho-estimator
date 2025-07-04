@@ -48,6 +48,10 @@ def refresh_access_token():
 def get_access_token():
     cache = load_token_cache()
     if cache and time.time() < cache["expiry"]:
+        print("Using cached access token")
+        print(f"Token expires at: {time.ctime(cache['expiry'])}")
         return cache["access_token"]
     else:
+        print("Refreshing access token")
+        print(f"Current time: {time.ctime(time.time())}")
         return refresh_access_token()
