@@ -4,6 +4,7 @@ import time
 import requests
 from pathlib import Path
 from dotenv import load_dotenv
+import sys
 
 load_dotenv()
 
@@ -48,10 +49,10 @@ def refresh_access_token():
 def get_access_token():
     cache = load_token_cache()
     if cache and time.time() < cache["expiry"]:
-        print("Using cached access token")
-        print(f"Token expires at: {time.ctime(cache['expiry'])}")
+        print("Using cached access token", flush=True)
+        print(f"Token expires at: {time.ctime(cache['expiry'])}", flush=True)
         return cache["access_token"]
     else:
-        print("Refreshing access token")
-        print(f"Current time: {time.ctime(time.time())}")
+        print("Refreshing access token", flush=True)
+        print(f"Current time: {time.ctime(time.time())}", flush=True)
         return refresh_access_token()

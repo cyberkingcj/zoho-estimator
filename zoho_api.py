@@ -3,6 +3,7 @@ from datetime import datetime
 from zoho_auth import get_access_token
 import json
 import os
+import sys
 
 # Replace with your actual Zoho credentials and endpoints
 ACCESS_TOKEN = get_access_token()
@@ -24,7 +25,7 @@ def fetch_items():
         with open(CACHE_FILE, "r") as f:
             cached_data = json.load(f)
             if cached_data.get("date") == today_str:
-                print("✅ Using cached items")
+                print("✅ Using cached items", flush=True)
                 return cached_data.get("items", {})
 
     # Fetch from API if no valid cache
@@ -42,7 +43,7 @@ def fetch_items():
             "items": item_dict
         }, f)
 
-    print("🔄 Fetched items from Zoho and updated cache")
+    print("🔄 Fetched items from Zoho and updated cache", flush=True)
     return item_dict
 
 def create_estimate(estimate_data):
