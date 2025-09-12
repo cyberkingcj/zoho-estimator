@@ -47,8 +47,11 @@ if "line_items" not in st.session_state:
 if menu == "Create New Estimate":
     st.header("📝 Create New Estimate")
 
-    # Copy Estimate functionality
-    with st.expander("📋 Copy from Existing Estimate", expanded=False):
+    # Copy Estimate functionality with persistent expanded state
+    if "copy_expander_expanded" not in st.session_state:
+        st.session_state.copy_expander_expanded = False
+    
+    with st.expander("📋 Copy from Existing Estimate", expanded=st.session_state.copy_expander_expanded):
         st.write("Load all values from an existing estimate to create a similar one.")
         
         try:
@@ -77,177 +80,192 @@ if menu == "Create New Estimate":
                 selected_copy = st.selectbox(
                     "Choose Estimate to Copy",
                     copy_options,
-                    help="Select an existing estimate to copy its values"
+                    help="Select an existing estimate to copy its values",
+                    key="copy_estimate_selector"
                 )
                 
-                if st.button("📥 Copy Estimate Values", disabled=(selected_copy == "Select estimate to copy...")):
-                    if selected_copy != "Select estimate to copy...":
-                        copy_estimate_id = copy_map[selected_copy]
-                        
-                        try:
-                            with st.spinner("Copying estimate data..."):
-                                # Fetch detailed estimate data
-                                from zoho_api import fetch_estimate_details
-                                estimate_details = fetch_estimate_details(copy_estimate_id)
-                                
-                                if "estimate" in estimate_details:
-                                    estimate = estimate_details["estimate"]
-                                    print(json.dumps(estimate, indent=2))
-                                    # Copy customer information
-                                    customer_name = estimate.get("reference_number", "")
-                                    if customer_name and '\n' in customer_name:
-                                        st.session_state["copy_customer_name"] = customer_name.split('\n',1)[0]
-                                    else:
-                                        st.session_state["copy_customer_name"] = customer_name
-                                    
-                                    # Parse reference number for capacity
-                                    ref_number = estimate.get("reference_number", "")
-                                    if ref_number and '\n' in ref_number:
-                                        parts = ref_number.split('\n', 1)
-                                        st.session_state["copy_capacity"] = parts[1] if len(parts) > 1 else ""
-                                    else:
-                                        st.session_state["copy_capacity"] = ""
-                                    
-                                    # Copy line items with proper item matching
-                                    copied_items = []
-                                    line_items = estimate.get("line_items", [])
-                                    
-                                    def find_item_by_name_or_sku(item_name, item_sku=None):
-                                        """Find item in cache by name or SKU"""
-                                        
-                                        # First try to match by SKU if available
-                                        if item_sku:
-                                            for cached_item in item_data:
-                                                if cached_item.get("sku") == item_sku:
-                                                    return cached_item
-                                        
-                                        # Then try to match by name (exact match)
-                                        for cached_item in item_data:
-                                            if cached_item.get("name") == item_name:
-                                                return cached_item
-                                        
-                                        # Check if item exists in item_map (raw cache data)
-                                        if item_name in item_map:
-                                            # Convert item_map entry to item_data format
-                                            raw_item = item_map[item_name]
-                                            return {
-                                                "name": raw_item["name"],
-                                                "sku": raw_item.get("sku", ""),
-                                                "rate": float(raw_item["rate"]),
-                                                "item_id": raw_item["item_id"]
-                                            }
-                                        
-                                        # Finally try partial name matching in item_data
-                                        for cached_item in item_data:
-                                            if item_name.lower() in cached_item.get("name", "").lower():
-                                                return cached_item
-                                        
-                                        return None
-                                    
-                                    for item in line_items:
-                                        # Skip handling and inspection charges as they'll be handled separately
-                                        if item.get("name") not in ["Handling Charges", "Inspection Charges"]:
-                                            item_name = item.get("name", "")
-                                            item_sku = item.get("sku", "")
-                                            
-                                            # Find matching item in current cache
-                                            matched_item = find_item_by_name_or_sku(item_name, item_sku)
-                                            if matched_item:
-                                                # Use matched item from cache
-                                                copied_items.append({
-                                                    "Description": matched_item["name"],
-                                                    "Quantity": float(item.get("quantity", 0)),
-                                                    "Price": float(item.get("rate", 0)),  # Keep original price
-                                                    "Amount": float(item.get("quantity", 0)) * float(item.get("rate", 0))
-                                                })
-                                            else:
-                                                # Item not found in cache, add as empty item with note
-                                                copied_items.append({
-                                                    "Description": "",  # Empty since item not found
-                                                    "Quantity": float(item.get("quantity", 0)),
-                                                    "Price": float(item.get("rate", 0)),
-                                                    "Amount": float(item.get("quantity", 0)) * float(item.get("rate", 0))
-                                                })
-                                                # Show warning about missing item
-                                                st.warning(f"⚠️ Item '{item_name}' (SKU: {item_sku}) not found in current items cache. Please select manually.")
-                                    
-                                    # Add at least one empty item if no items found
-                                    if not copied_items:
-                                        copied_items.append({
-                                            "Description": "",
-                                            "Quantity": 0.0,
-                                            "Price": 0.0,
-                                            "Amount": 0.0
-                                        })
-                                    
-                                    # Store matched items for setting dropdown selections
-                                    matched_items_for_selection = []
-                                    
-                                    # Re-process items to store matched items for dropdown selection
-                                    for idx, item in enumerate(line_items):
-                                        if item.get("name") not in ["Handling Charges", "Inspection Charges"]:
-                                            item_name = item.get("name", "")
-                                            item_sku = item.get("sku", "")
-                                            matched_item = find_item_by_name_or_sku(item_name, item_sku)
-                                            matched_items_for_selection.append(matched_item)
-                                        else:
-                                            matched_items_for_selection.append(None)
-                                    
-                                    st.session_state.line_items = copied_items
-                                    
-                                    # Copy charges (look for them in line items)
-                                    handling_charge = 0.0
-                                    inspection_charge = 0.0
-                                    
-                                    for item in line_items:
-                                        if item.get("name") == "Handling Charges":
-                                            handling_charge = float(item.get("rate", 0))
-                                        elif item.get("name") == "Inspection Charges":
-                                            inspection_charge = float(item.get("rate", 0))
-                                    
-                                    print(f'Shipping charge: {estimate.get("shipping_charge")}')
-                                    print(f'Shipping charge excl tax: {estimate.get("shipping_charge_exclusive_of_tax")}')
-                                    if float(estimate.get("shipping_charge", 0)) > 0:
-                                        handling_charge = float(estimate.get("shipping_charge"))
-                                    
-                                    st.session_state["copy_handling_charge"] = handling_charge
-                                    st.session_state["copy_inspection_charge"] = inspection_charge
-                                    
-                                    # Clear existing widget states but preserve what we need
-                                    keys_to_clear = [key for key in st.session_state.keys() 
-                                                   if key.startswith(("qty_", "price_", "amount_", "selected_item_"))]
-                                    for key in keys_to_clear:
-                                        del st.session_state[key]
-                                    
-                                    # Set the selected items for dropdowns
-                                    for idx, matched_item in enumerate(matched_items_for_selection):
-                                        if matched_item:
-                                            st.session_state[f"selected_item_{idx}"] = matched_item
-                                            
-                                            # Also set the dropdown widget value to the correct option string
-                                            # Find the matching option string in the cached options
-                                            item_name = matched_item["name"]
-                                            item_sku = matched_item.get("sku", "")
-                                            item_rate = matched_item["rate"]
-                                            
-                                            # Create the display text that matches the dropdown options
-                                            display_text = item_name
-                                            if item_sku:
-                                                display_text += f" (SKU: {item_sku})"
-                                            display_text += f" - ₹{item_rate:.2f}"
-                                            
-                                            # Set the dropdown widget to this option
-                                            st.session_state[f"item_dropdown_item_{idx}"] = display_text
-                                    
-                                    st.success(f"✅ Estimate copied successfully!")
-                                    st.info("📝 Form has been populated with the copied estimate data. You can now modify as needed.")
-                                    st.rerun()
-                                    
+                # Keep expander open when user is actively selecting
+                if selected_copy != "Select estimate to copy...":
+                    st.session_state.copy_expander_expanded = True
+                
+                copy_button_col1, copy_button_col2 = st.columns([1, 2])
+                with copy_button_col1:
+                    copy_clicked = st.button("📥 Copy Estimate Values", disabled=(selected_copy == "Select estimate to copy..."), use_container_width=True)
+                
+                with copy_button_col2:
+                    if st.button("❌ Close", use_container_width=True):
+                        st.session_state.copy_expander_expanded = False
+                        st.rerun()
+                
+                if copy_clicked and selected_copy != "Select estimate to copy...":
+                    copy_estimate_id = copy_map[selected_copy]
+                    
+                    try:
+                        with st.spinner("Copying estimate data..."):
+                            # Fetch detailed estimate data
+                            from zoho_api import fetch_estimate_details
+                            estimate_details = fetch_estimate_details(copy_estimate_id)
+                            
+                            if "estimate" in estimate_details:
+                                estimate = estimate_details["estimate"]
+                                print(json.dumps(estimate, indent=2))
+                                # Copy customer information
+                                customer_name = estimate.get("reference_number", "")
+                                if customer_name and '\n' in customer_name:
+                                    st.session_state["copy_customer_name"] = customer_name.split('\n',1)[0]
                                 else:
-                                    st.error("❌ Failed to fetch estimate details")
+                                    st.session_state["copy_customer_name"] = customer_name
+                                
+                                # Parse reference number for capacity
+                                ref_number = estimate.get("reference_number", "")
+                                if ref_number and '\n' in ref_number:
+                                    parts = ref_number.split('\n', 1)
+                                    st.session_state["copy_capacity"] = parts[1] if len(parts) > 1 else ""
+                                else:
+                                    st.session_state["copy_capacity"] = ""
                                     
-                        except Exception as e:
-                            st.error(f"❌ Error copying estimate: {str(e)}")
+                                # Copy line items with proper item matching
+                                copied_items = []
+                                line_items = estimate.get("line_items", [])
+                                
+                                def find_item_by_name_or_sku(item_name, item_sku=None):
+                                    """Find item in cache by name or SKU"""
+                                    # First try to match by SKU if available
+                                    if item_sku:
+                                        for cached_item in item_data:
+                                            if cached_item.get("sku") == item_sku:
+                                                return cached_item
+                                    
+                                    # Then try to match by name (exact match)
+                                    for cached_item in item_data:
+                                        if cached_item.get("name") == item_name:
+                                            return cached_item
+                                    
+                                    # Check if item exists in item_map (raw cache data)
+                                    if item_name in item_map:
+                                        # Convert item_map entry to item_data format
+                                        raw_item = item_map[item_name]
+                                        return {
+                                            "name": raw_item["name"],
+                                            "sku": raw_item.get("sku", ""),
+                                            "rate": float(raw_item["rate"]),
+                                            "item_id": raw_item["item_id"]
+                                        }
+                                    
+                                    # Finally try partial name matching in item_data
+                                    for cached_item in item_data:
+                                        if item_name.lower() in cached_item.get("name", "").lower():
+                                            return cached_item
+                                    
+                                    return None
+                                
+                                for item in line_items:
+                                    # Skip handling and inspection charges as they'll be handled separately
+                                    if item.get("name") not in ["Handling Charges", "Inspection Charges"]:
+                                        item_name = item.get("name", "")
+                                        item_sku = item.get("sku", "")
+                                        
+                                        # Find matching item in current cache
+                                        matched_item = find_item_by_name_or_sku(item_name, item_sku)
+                                        if matched_item:
+                                            # Use matched item from cache
+                                            copied_items.append({
+                                                "Description": matched_item["name"],
+                                                "Quantity": float(item.get("quantity", 0)),
+                                                "Price": float(item.get("rate", 0)),  # Keep original price
+                                                "Amount": float(item.get("quantity", 0)) * float(item.get("rate", 0))
+                                            })
+                                        else:
+                                            # Item not found in cache, add as empty item with note
+                                            copied_items.append({
+                                                "Description": "",  # Empty since item not found
+                                                "Quantity": float(item.get("quantity", 0)),
+                                                "Price": float(item.get("rate", 0)),
+                                                "Amount": float(item.get("quantity", 0)) * float(item.get("rate", 0))
+                                            })
+                                            # Show warning about missing item
+                                            st.warning(f"⚠️ Item '{item_name}' (SKU: {item_sku}) not found in current items cache. Please select manually.")
+                                
+                                # Add at least one empty item if no items found
+                                if not copied_items:
+                                    copied_items.append({
+                                        "Description": "",
+                                        "Quantity": 0.0,
+                                        "Price": 0.0,
+                                        "Amount": 0.0
+                                    })
+                                
+                                # Store matched items for setting dropdown selections
+                                matched_items_for_selection = []
+                                
+                                # Re-process items to store matched items for dropdown selection
+                                for idx, item in enumerate(line_items):
+                                    if item.get("name") not in ["Handling Charges", "Inspection Charges"]:
+                                        item_name = item.get("name", "")
+                                        item_sku = item.get("sku", "")
+                                        matched_item = find_item_by_name_or_sku(item_name, item_sku)
+                                        matched_items_for_selection.append(matched_item)
+                                    else:
+                                        matched_items_for_selection.append(None)
+                                
+                                st.session_state.line_items = copied_items
+                                
+                                # Copy charges (look for them in line items)
+                                handling_charge = 0.0
+                                inspection_charge = 0.0
+                                
+                                for item in line_items:
+                                    if item.get("name") == "Handling Charges":
+                                        handling_charge = float(item.get("rate", 0))
+                                    elif item.get("name") == "Inspection Charges":
+                                        inspection_charge = float(item.get("rate", 0))
+                                
+                                print(f'Shipping charge: {estimate.get("shipping_charge")}')
+                                print(f'Shipping charge excl tax: {estimate.get("shipping_charge_exclusive_of_tax")}')
+                                if float(estimate.get("shipping_charge", 0)) > 0:
+                                    handling_charge = float(estimate.get("shipping_charge"))
+                                
+                                st.session_state["copy_handling_charge"] = handling_charge
+                                st.session_state["copy_inspection_charge"] = inspection_charge
+                                
+                                # Clear existing widget states but preserve what we need
+                                keys_to_clear = [key for key in st.session_state.keys() 
+                                                if key.startswith(("qty_", "price_", "amount_", "selected_item_"))]
+                                for key in keys_to_clear:
+                                    del st.session_state[key]
+                                
+                                # Set the selected items for dropdowns
+                                for idx, matched_item in enumerate(matched_items_for_selection):
+                                    if matched_item:
+                                        st.session_state[f"selected_item_{idx}"] = matched_item
+                                        
+                                        # Also set the dropdown widget value to the correct option string
+                                        # Find the matching option string in the cached options
+                                        item_name = matched_item["name"]
+                                        item_sku = matched_item.get("sku", "")
+                                        item_rate = matched_item["rate"]
+                                        
+                                        # Create the display text that matches the dropdown options
+                                        display_text = item_name
+                                        if item_sku:
+                                            display_text += f" (SKU: {item_sku})"
+                                        display_text += f" - ₹{item_rate:.2f}"
+                                        
+                                        # Set the dropdown widget to this option
+                                        st.session_state[f"item_dropdown_item_{idx}"] = display_text
+                                
+                                st.success(f"✅ Estimate copied successfully!")
+                                st.info("📝 Form has been populated with the copied estimate data. You can now modify as needed.")
+                                
+                                # Close the expander after successful copy
+                                st.session_state.copy_expander_expanded = False
+                                st.rerun()
+                                    
+                            else:
+                                st.error("❌ Failed to fetch estimate details")
+                                    
+                    except Exception as e:
+                        st.error(f"❌ Error copying estimate: {str(e)}")
             else:
                 st.info("No existing estimates found to copy from.")
                 
