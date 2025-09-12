@@ -57,6 +57,12 @@ def fetch_estimates():
     # print(response.json())
     return response.json().get("estimates", [])
 
+def fetch_estimate_details(estimate_id):
+    """Fetch detailed estimate data including line items"""
+    url = f"{BASE_URL}/estimates/{estimate_id}?organization_id={ORG_ID}"
+    response = requests.get(url, headers=HEADERS)
+    return response.json()
+
 def download_estimate_pdf(estimate_id):
     url = f"{BASE_URL}/estimates/{estimate_id}?organization_id={ORG_ID}&accept=pdf"
     response = requests.get(url, headers=HEADERS)

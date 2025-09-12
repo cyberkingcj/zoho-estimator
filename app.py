@@ -8,6 +8,8 @@ import base64
 from thefuzz import process
 from streamlit.components.v1 import html
 import tempfile
+import json
+import json
 
 st.set_page_config(page_title="Zoho Estimator", layout="wide")
 st.title("JSV DISTRIBUTERS")
@@ -45,8 +47,176 @@ if "line_items" not in st.session_state:
 if menu == "Create New Estimate":
     st.header("📝 Create New Estimate")
 
-    # Customer information with validation
-    to_customer = st.text_input("Estimate To", "", placeholder="Enter customer name...")
+    # Copy Estimate functionality
+    with st.expander("📋 Copy from Existing Estimate", expanded=False):
+        st.write("Load all values from an existing estimate to create a similar one.")
+        
+        try:
+            # Load estimates for copying
+            copy_estimates = fetch_estimates()
+            if copy_estimates:
+                copy_df = pd.DataFrame(copy_estimates)
+                copy_df['date'] = pd.to_datetime(copy_df['date']).dt.date
+                
+                # Create dropdown options with estimate number and reference
+                copy_options = ["Select estimate to copy..."]
+                copy_map = {}
+                
+                for _, row in copy_df.iterrows():
+                    display_text = f"{row['estimate_number']}"
+                    if row['reference_number'] and str(row['reference_number']).strip():
+                        ref_clean = str(row['reference_number']).replace('\n', ' | ').strip()
+                        if len(ref_clean) > 30:
+                            ref_clean = ref_clean[:30] + "..."
+                        display_text += f" - {ref_clean}"
+                    display_text += f" (₹{row['total']:.0f})"
+                    
+                    copy_options.append(display_text)
+                    copy_map[display_text] = row['estimate_id']
+                
+                selected_copy = st.selectbox(
+                    "Choose Estimate to Copy",
+                    copy_options,
+                    help="Select an existing estimate to copy its values"
+                )
+                
+                if st.button("📥 Copy Estimate Values", disabled=(selected_copy == "Select estimate to copy...")):
+                    if selected_copy != "Select estimate to copy...":
+                        copy_estimate_id = copy_map[selected_copy]
+                        
+                        try:
+                            with st.spinner("Copying estimate data..."):
+                                # Fetch detailed estimate data
+                                from zoho_api import fetch_estimate_details
+                                estimate_details = fetch_estimate_details(copy_estimate_id)
+                                
+                                if "estimate" in estimate_details:
+                                    estimate = estimate_details["estimate"]
+                                    # print(json.dumps(estimate, indent=2))
+                                    # Copy customer information
+                                    customer_name = estimate.get("reference_number", "")
+                                    if customer_name and '\n' in customer_name:
+                                        st.session_state["copy_customer_name"] = customer_name.split('\n',1)[0]
+                                    else:
+                                        st.session_state["copy_customer_name"] = customer_name
+                                    
+                                    # Parse reference number for capacity
+                                    ref_number = estimate.get("reference_number", "")
+                                    if ref_number and '\n' in ref_number:
+                                        parts = ref_number.split('\n', 1)
+                                        st.session_state["copy_capacity"] = parts[1] if len(parts) > 1 else ""
+                                    else:
+                                        st.session_state["copy_capacity"] = ""
+                                    
+                                    # Copy line items with proper item matching
+                                    copied_items = []
+                                    line_items = estimate.get("line_items", [])
+                                    
+                                    def find_item_by_name_or_sku(item_name, item_sku=None):
+                                        """Find item in cache by name or SKU"""
+                                        # First try to match by SKU if available
+                                        if item_sku:
+                                            for cached_item in item_data:
+                                                if cached_item.get("sku") == item_sku:
+                                                    return cached_item
+                                        
+                                        # Then try to match by name (exact match)
+                                        for cached_item in item_data:
+                                            if cached_item.get("name") == item_name:
+                                                return cached_item
+                                        
+                                        # Finally try partial name matching
+                                        for cached_item in item_data:
+                                            if item_name.lower() in cached_item.get("name", "").lower():
+                                                return cached_item
+                                        
+                                        return None
+                                    
+                                    for item in line_items:
+                                        # Skip handling and inspection charges as they'll be handled separately
+                                        if item.get("name") not in ["Handling Charges", "Inspection Charges"]:
+                                            item_name = item.get("name", "")
+                                            item_sku = item.get("sku", "")
+                                            
+                                            # Find matching item in current cache
+                                            matched_item = find_item_by_name_or_sku(item_name, item_sku)
+                                            
+                                            if matched_item:
+                                                # Use matched item from cache
+                                                copied_items.append({
+                                                    "Description": matched_item["name"],
+                                                    "Quantity": float(item.get("quantity", 0)),
+                                                    "Price": float(item.get("rate", 0)),  # Keep original price
+                                                    "Amount": float(item.get("quantity", 0)) * float(item.get("rate", 0))
+                                                })
+                                            else:
+                                                # Item not found in cache, add as empty item with note
+                                                copied_items.append({
+                                                    "Description": "",  # Empty since item not found
+                                                    "Quantity": float(item.get("quantity", 0)),
+                                                    "Price": float(item.get("rate", 0)),
+                                                    "Amount": float(item.get("quantity", 0)) * float(item.get("rate", 0))
+                                                })
+                                                # Show warning about missing item
+                                                st.warning(f"⚠️ Item '{item_name}' (SKU: {item_sku}) not found in current items cache. Please select manually.")
+                                    
+                                    # Add at least one empty item if no items found
+                                    if not copied_items:
+                                        copied_items.append({
+                                            "Description": "",
+                                            "Quantity": 0.0,
+                                            "Price": 0.0,
+                                            "Amount": 0.0
+                                        })
+                                    
+                                    st.session_state.line_items = copied_items
+                                    
+                                    # Copy charges (look for them in line items)
+                                    handling_charge = 0.0
+                                    inspection_charge = 0.0
+                                    
+                                    for item in line_items:
+                                        if item.get("name") == "Handling Charges":
+                                            handling_charge = float(item.get("rate", 0))
+                                        elif item.get("name") == "Inspection Charges":
+                                            inspection_charge = float(item.get("rate", 0))
+                                    
+                                    if estimate.get("shipping_charge", 0) > 0 and handling_charge != 0:
+                                        handling_charge = estimate.get("shipping_charge")
+                                    
+                                    st.session_state["copy_handling_charge"] = handling_charge
+                                    st.session_state["copy_inspection_charge"] = inspection_charge
+                                    
+                                    # Clear any existing widget states to force refresh
+                                    keys_to_clear = [key for key in st.session_state.keys() 
+                                                   if key.startswith(("qty_", "price_", "amount_", "selected_item_"))]
+                                    for key in keys_to_clear:
+                                        del st.session_state[key]
+                                    
+                                    st.success(f"✅ Estimate copied successfully!")
+                                    st.info("📝 Form has been populated with the copied estimate data. You can now modify as needed.")
+                                    st.rerun()
+                                    
+                                else:
+                                    st.error("❌ Failed to fetch estimate details")
+                                    
+                        except Exception as e:
+                            st.error(f"❌ Error copying estimate: {str(e)}")
+            else:
+                st.info("No existing estimates found to copy from.")
+                
+        except Exception as e:
+            st.error(f"Error loading estimates: {str(e)}")
+
+    st.divider()
+
+    # Customer information with validation (use copied values if available)
+    default_customer = st.session_state.get("copy_customer_name", "")
+    to_customer = st.text_input("Estimate To", value=default_customer, placeholder="Enter customer name...")
+    
+    # Clear the copied value after using it
+    if "copy_customer_name" in st.session_state:
+        del st.session_state["copy_customer_name"]
     
     # Real-time validation for customer name
     customer_valid, customer_error = FormValidator.validate_customer_name(to_customer)
@@ -54,7 +224,14 @@ if menu == "Create New Estimate":
         st.error(customer_error)
     
     estimate_date = st.date_input("Estimate Date", value=date.today())
-    capacity = st.text_input("Capacity (optional)", "", placeholder="Enter capacity details...")
+    
+    # Capacity with copied value if available
+    default_capacity = st.session_state.get("copy_capacity", "")
+    capacity = st.text_input("Capacity (optional)", value=default_capacity, placeholder="Enter capacity details...")
+    
+    # Clear the copied value after using it
+    if "copy_capacity" in st.session_state:
+        del st.session_state["copy_capacity"]
 
     st.subheader("📦 Line Items")
 
@@ -206,22 +383,32 @@ if menu == "Create New Estimate":
     col1, col2 = st.columns(2)
     
     with col1:
+        # Use copied handling charge if available
+        default_handling = st.session_state.get("copy_handling_charge", 0.0)
         handling_charge = st.number_input(
             "Handling Charges", 
             min_value=0.0, 
-            value=0.0, 
+            value=default_handling, 
             step=100.0,
             help="Additional handling charges"
         )
+        # Clear copied value after using it
+        if "copy_handling_charge" in st.session_state:
+            del st.session_state["copy_handling_charge"]
     
     with col2:
+        # Use copied inspection charge if available
+        default_inspection = st.session_state.get("copy_inspection_charge", 0.0)
         inspection_charge = st.number_input(
             "Inspection Charges", 
             min_value=0.0, 
-            value=0.0, 
+            value=default_inspection, 
             step=500.0,
             help="Inspection charges if applicable"
         )
+        # Clear copied value after using it
+        if "copy_inspection_charge" in st.session_state:
+            del st.session_state["copy_inspection_charge"]
 
     # Validate charges
     charges_valid, charges_error = FormValidator.validate_charges(handling_charge, inspection_charge)
