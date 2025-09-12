@@ -256,8 +256,13 @@ if menu == "Create New Estimate":
 
     st.divider()
 
-    # Customer information with validation (use copied values if available)
-    default_customer = st.session_state.get("copy_customer_name", "")
+    # Customer information with validation (use copied or reset values if available)
+    if st.session_state.get("form_reset", False):
+        default_customer = st.session_state.get("reset_customer", "")
+        st.session_state.pop("reset_customer", None)
+    else:
+        default_customer = st.session_state.get("copy_customer_name", "")
+    
     to_customer = st.text_input("Estimate To", value=default_customer, placeholder="Enter customer name...")
     
     # Clear the copied value after using it
@@ -271,8 +276,13 @@ if menu == "Create New Estimate":
     
     estimate_date = st.date_input("Estimate Date", value=date.today())
     
-    # Capacity with copied value if available
-    default_capacity = st.session_state.get("copy_capacity", "")
+    # Capacity with copied or reset value if available
+    if st.session_state.get("form_reset", False):
+        default_capacity = st.session_state.get("reset_capacity", "")
+        st.session_state.pop("reset_capacity", None)
+    else:
+        default_capacity = st.session_state.get("copy_capacity", "")
+    
     capacity = st.text_input("Capacity (optional)", value=default_capacity, placeholder="Enter capacity details...")
     
     # Clear the copied value after using it
@@ -429,8 +439,13 @@ if menu == "Create New Estimate":
     col1, col2 = st.columns(2)
     
     with col1:
-        # Use copied handling charge if available
-        default_handling = st.session_state.get("copy_handling_charge", 0.0)
+        # Use reset, copied, or default handling charge
+        if st.session_state.get("form_reset", False):
+            default_handling = st.session_state.get("reset_handling", 0.0)
+            st.session_state.pop("reset_handling", None)
+        else:
+            default_handling = st.session_state.get("copy_handling_charge", 0.0)
+        
         handling_charge = st.number_input(
             "Handling Charges", 
             min_value=0.0, 
@@ -443,8 +458,13 @@ if menu == "Create New Estimate":
             del st.session_state["copy_handling_charge"]
     
     with col2:
-        # Use copied inspection charge if available
-        default_inspection = st.session_state.get("copy_inspection_charge", 0.0)
+        # Use reset, copied, or default inspection charge
+        if st.session_state.get("form_reset", False):
+            default_inspection = st.session_state.get("reset_inspection", 0.0)
+            st.session_state.pop("reset_inspection", None)
+        else:
+            default_inspection = st.session_state.get("copy_inspection_charge", 0.0)
+        
         inspection_charge = st.number_input(
             "Inspection Charges", 
             min_value=0.0, 
@@ -458,14 +478,26 @@ if menu == "Create New Estimate":
 
     # Multiplier field
     st.subheader("🔢 Multiplier")
+    
+    # Use reset or default multiplier value
+    if st.session_state.get("form_reset", False):
+        default_multiplier = st.session_state.get("reset_multiplier", 1.0)
+        st.session_state.pop("reset_multiplier", None)
+    else:
+        default_multiplier = 1.0
+    
     multiplier = st.number_input(
         "Multiplier", 
         min_value=1.0,
         max_value=100.0,
-        value=1.0, 
+        value=default_multiplier, 
         step=1.0,
         help="Multiply the total estimate amount (1.0 = no change, 2.0 = double, etc.)"
     )
+
+    # Clear the form reset flag after all fields have been processed
+    if st.session_state.get("form_reset", False):
+        st.session_state.pop("form_reset", None)
 
     # Validate charges
     charges_valid, charges_error = FormValidator.validate_charges(handling_charge, inspection_charge)
@@ -596,7 +628,9 @@ if menu == "Create New Estimate":
                                 f"estimate_{estimate_id}_{to_customer.replace(' ', '_')}.pdf"
                             )
                             
-                            # Reset form after successful submission
+                            # Complete form reset after successful submission
+                            
+                            # Reset line items
                             st.session_state.line_items = [{
                                 "Description": "",
                                 "Quantity": 0.0,
@@ -604,10 +638,32 @@ if menu == "Create New Estimate":
                                 "Amount": 0.0,
                             }]
                             
-                            # Clear item selections
-                            keys_to_clear = [key for key in st.session_state.keys() if key.startswith("selected_item_")]
+                            # Clear ALL form-related session state keys
+                            keys_to_clear = []
+                            for key in st.session_state.keys():
+                                if key.startswith((
+                                    "selected_item_",
+                                    "qty_", 
+                                    "price_", 
+                                    "amount_",
+                                    "item_dropdown_",
+                                    "copy_"  # Clear any copy-related states
+                                )):
+                                    keys_to_clear.append(key)
+                            
                             for key in keys_to_clear:
                                 del st.session_state[key]
+                            
+                            # Set reset flags for input fields to force them to clear
+                            st.session_state["form_reset"] = True
+                            st.session_state["reset_customer"] = ""
+                            st.session_state["reset_capacity"] = ""
+                            st.session_state["reset_handling"] = 0.0
+                            st.session_state["reset_inspection"] = 0.0
+                            st.session_state["reset_multiplier"] = 1.0
+                            
+                            # Force a complete page refresh to reset all input values
+                            st.rerun()
                                 
                         else:
                             st.error(f"❌ PDF Generation Failed: {error_msg}")
