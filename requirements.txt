@@ -4,4 +4,4 @@ thefuzz
 requests
 python-dateutil
 thefuzz[speedup]
-dotenv
+python-dotenv
