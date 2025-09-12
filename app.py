@@ -92,7 +92,7 @@ if menu == "Create New Estimate":
                                 
                                 if "estimate" in estimate_details:
                                     estimate = estimate_details["estimate"]
-                                    # print(json.dumps(estimate, indent=2))
+                                    print(json.dumps(estimate, indent=2))
                                     # Copy customer information
                                     customer_name = estimate.get("reference_number", "")
                                     if customer_name and '\n' in customer_name:
@@ -114,6 +114,7 @@ if menu == "Create New Estimate":
                                     
                                     def find_item_by_name_or_sku(item_name, item_sku=None):
                                         """Find item in cache by name or SKU"""
+                                        
                                         # First try to match by SKU if available
                                         if item_sku:
                                             for cached_item in item_data:
@@ -125,7 +126,18 @@ if menu == "Create New Estimate":
                                             if cached_item.get("name") == item_name:
                                                 return cached_item
                                         
-                                        # Finally try partial name matching
+                                        # Check if item exists in item_map (raw cache data)
+                                        if item_name in item_map:
+                                            # Convert item_map entry to item_data format
+                                            raw_item = item_map[item_name]
+                                            return {
+                                                "name": raw_item["name"],
+                                                "sku": raw_item.get("sku", ""),
+                                                "rate": float(raw_item["rate"]),
+                                                "item_id": raw_item["item_id"]
+                                            }
+                                        
+                                        # Finally try partial name matching in item_data
                                         for cached_item in item_data:
                                             if item_name.lower() in cached_item.get("name", "").lower():
                                                 return cached_item
@@ -140,7 +152,6 @@ if menu == "Create New Estimate":
                                             
                                             # Find matching item in current cache
                                             matched_item = find_item_by_name_or_sku(item_name, item_sku)
-                                            
                                             if matched_item:
                                                 # Use matched item from cache
                                                 copied_items.append({
@@ -169,6 +180,19 @@ if menu == "Create New Estimate":
                                             "Amount": 0.0
                                         })
                                     
+                                    # Store matched items for setting dropdown selections
+                                    matched_items_for_selection = []
+                                    
+                                    # Re-process items to store matched items for dropdown selection
+                                    for idx, item in enumerate(line_items):
+                                        if item.get("name") not in ["Handling Charges", "Inspection Charges"]:
+                                            item_name = item.get("name", "")
+                                            item_sku = item.get("sku", "")
+                                            matched_item = find_item_by_name_or_sku(item_name, item_sku)
+                                            matched_items_for_selection.append(matched_item)
+                                        else:
+                                            matched_items_for_selection.append(None)
+                                    
                                     st.session_state.line_items = copied_items
                                     
                                     # Copy charges (look for them in line items)
@@ -181,17 +205,39 @@ if menu == "Create New Estimate":
                                         elif item.get("name") == "Inspection Charges":
                                             inspection_charge = float(item.get("rate", 0))
                                     
-                                    if estimate.get("shipping_charge", 0) > 0 and handling_charge != 0:
-                                        handling_charge = estimate.get("shipping_charge")
+                                    print(f'Shipping charge: {estimate.get("shipping_charge")}')
+                                    print(f'Shipping charge excl tax: {estimate.get("shipping_charge_exclusive_of_tax")}')
+                                    if float(estimate.get("shipping_charge", 0)) > 0:
+                                        handling_charge = float(estimate.get("shipping_charge"))
                                     
                                     st.session_state["copy_handling_charge"] = handling_charge
                                     st.session_state["copy_inspection_charge"] = inspection_charge
                                     
-                                    # Clear any existing widget states to force refresh
+                                    # Clear existing widget states but preserve what we need
                                     keys_to_clear = [key for key in st.session_state.keys() 
                                                    if key.startswith(("qty_", "price_", "amount_", "selected_item_"))]
                                     for key in keys_to_clear:
                                         del st.session_state[key]
+                                    
+                                    # Set the selected items for dropdowns
+                                    for idx, matched_item in enumerate(matched_items_for_selection):
+                                        if matched_item:
+                                            st.session_state[f"selected_item_{idx}"] = matched_item
+                                            
+                                            # Also set the dropdown widget value to the correct option string
+                                            # Find the matching option string in the cached options
+                                            item_name = matched_item["name"]
+                                            item_sku = matched_item.get("sku", "")
+                                            item_rate = matched_item["rate"]
+                                            
+                                            # Create the display text that matches the dropdown options
+                                            display_text = item_name
+                                            if item_sku:
+                                                display_text += f" (SKU: {item_sku})"
+                                            display_text += f" - ₹{item_rate:.2f}"
+                                            
+                                            # Set the dropdown widget to this option
+                                            st.session_state[f"item_dropdown_item_{idx}"] = display_text
                                     
                                     st.success(f"✅ Estimate copied successfully!")
                                     st.info("📝 Form has been populated with the copied estimate data. You can now modify as needed.")
@@ -410,6 +456,17 @@ if menu == "Create New Estimate":
         if "copy_inspection_charge" in st.session_state:
             del st.session_state["copy_inspection_charge"]
 
+    # Multiplier field
+    st.subheader("🔢 Multiplier")
+    multiplier = st.number_input(
+        "Multiplier", 
+        min_value=1.0,
+        max_value=100.0,
+        value=1.0, 
+        step=1.0,
+        help="Multiply the total estimate amount (1.0 = no change, 2.0 = double, etc.)"
+    )
+
     # Validate charges
     charges_valid, charges_error = FormValidator.validate_charges(handling_charge, inspection_charge)
     if not charges_valid:
@@ -417,7 +474,11 @@ if menu == "Create New Estimate":
 
     subtotal = total_amount + handling_charge + inspection_charge
     tax = subtotal * 0.18
-    grand_total = subtotal + tax
+    base_total = subtotal + tax
+    
+    # Calculate adjustment based on multiplier
+    adjustment_amount = base_total * (multiplier - 1) if multiplier > 1 else 0
+    final_total = base_total + adjustment_amount
 
     # Enhanced total display
     st.divider()
@@ -430,7 +491,9 @@ if menu == "Create New Estimate":
         st.write("**Inspection Charges:**")
         st.write("**Subtotal:**")
         st.write("**GST @18%:**")
-        st.write("### **Grand Total:**")
+        if multiplier > 1:
+            st.write(f"**Adjustment (x{multiplier:.1f}):**")
+        st.write("### **Final Total:**")
     
     with summary_col2:
         st.write(f"₹{total_amount:.2f}")
@@ -438,7 +501,9 @@ if menu == "Create New Estimate":
         st.write(f"₹{inspection_charge:.2f}")
         st.write(f"₹{subtotal:.2f}")
         st.write(f"₹{tax:.2f}")
-        st.write(f"### ₹{grand_total:.2f}")
+        if multiplier > 1:
+            st.write(f"₹{adjustment_amount:.2f}")
+        st.write(f"### ₹{final_total:.2f}")
 
     # Enhanced form submission with comprehensive validation
     st.divider()
@@ -501,6 +566,11 @@ if menu == "Create New Estimate":
                 "is_inclusive_tax": False,
                 "custom_subject": to_customer + "\n" + capacity if capacity else to_customer,
             }
+            
+            # Add adjustment if multiplier is greater than 1
+            if multiplier > 1:
+                estimate_data["adjustment"] = adjustment_amount
+                estimate_data["adjustment_description"] = f"x{multiplier:.1f}"
 
             # Create estimate with progress indicator
             with st.spinner("Creating estimate..."):
