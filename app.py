@@ -188,6 +188,10 @@ if menu == "Create New Estimate":
         }))
     
     with col2:
+        pass
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
         # Show quick summary of valid items
         valid_items = [item for item in st.session_state.line_items if item.get('Quantity', 0) > 0 and item.get('Description')]
         if valid_items:
