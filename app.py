@@ -256,14 +256,17 @@ if menu == "Create New Estimate":
 
     st.divider()
 
-    # Customer information with validation (use copied or reset values if available)
-    if st.session_state.get("form_reset", False):
-        default_customer = st.session_state.get("reset_customer", "")
-        st.session_state.pop("reset_customer", None)
-    else:
-        default_customer = st.session_state.get("copy_customer_name", "")
+    # Get form ID for widget keys (ensures reset after submission)
+    form_id = st.session_state.get("form_id", 0)
     
-    to_customer = st.text_input("Estimate To", value=default_customer, placeholder="Enter customer name...")
+    # Customer information with validation (use copied values if available)
+    default_customer = st.session_state.get("copy_customer_name", "")
+    to_customer = st.text_input(
+        "Estimate To", 
+        value=default_customer, 
+        placeholder="Enter customer name...",
+        key=f"customer_{form_id}"
+    )
     
     # Clear the copied value after using it
     if "copy_customer_name" in st.session_state:
@@ -274,16 +277,16 @@ if menu == "Create New Estimate":
     if to_customer and not customer_valid:
         st.error(customer_error)
     
-    estimate_date = st.date_input("Estimate Date", value=date.today())
+    estimate_date = st.date_input("Estimate Date", value=date.today(), key=f"date_{form_id}")
     
-    # Capacity with copied or reset value if available
-    if st.session_state.get("form_reset", False):
-        default_capacity = st.session_state.get("reset_capacity", "")
-        st.session_state.pop("reset_capacity", None)
-    else:
-        default_capacity = st.session_state.get("copy_capacity", "")
-    
-    capacity = st.text_input("Capacity (optional)", value=default_capacity, placeholder="Enter capacity details...")
+    # Capacity with copied value if available
+    default_capacity = st.session_state.get("copy_capacity", "")
+    capacity = st.text_input(
+        "Capacity (optional)", 
+        value=default_capacity, 
+        placeholder="Enter capacity details...",
+        key=f"capacity_{form_id}"
+    )
     
     # Clear the copied value after using it
     if "copy_capacity" in st.session_state:
@@ -439,38 +442,32 @@ if menu == "Create New Estimate":
     col1, col2 = st.columns(2)
     
     with col1:
-        # Use reset, copied, or default handling charge
-        if st.session_state.get("form_reset", False):
-            default_handling = st.session_state.get("reset_handling", 0.0)
-            st.session_state.pop("reset_handling", None)
-        else:
-            default_handling = st.session_state.get("copy_handling_charge", 0.0)
+        # Use copied or default handling charge
+        default_handling = st.session_state.get("copy_handling_charge", 0.0)
         
         handling_charge = st.number_input(
             "Handling Charges", 
             min_value=0.0, 
             value=default_handling, 
             step=100.0,
-            help="Additional handling charges"
+            help="Additional handling charges",
+            key=f"handling_{form_id}"
         )
         # Clear copied value after using it
         if "copy_handling_charge" in st.session_state:
             del st.session_state["copy_handling_charge"]
     
     with col2:
-        # Use reset, copied, or default inspection charge
-        if st.session_state.get("form_reset", False):
-            default_inspection = st.session_state.get("reset_inspection", 0.0)
-            st.session_state.pop("reset_inspection", None)
-        else:
-            default_inspection = st.session_state.get("copy_inspection_charge", 0.0)
+        # Use copied or default inspection charge
+        default_inspection = st.session_state.get("copy_inspection_charge", 0.0)
         
         inspection_charge = st.number_input(
             "Inspection Charges", 
             min_value=0.0, 
             value=default_inspection, 
             step=500.0,
-            help="Inspection charges if applicable"
+            help="Inspection charges if applicable",
+            key=f"inspection_{form_id}"
         )
         # Clear copied value after using it
         if "copy_inspection_charge" in st.session_state:
@@ -479,25 +476,15 @@ if menu == "Create New Estimate":
     # Multiplier field
     st.subheader("🔢 Multiplier")
     
-    # Use reset or default multiplier value
-    if st.session_state.get("form_reset", False):
-        default_multiplier = st.session_state.get("reset_multiplier", 1.0)
-        st.session_state.pop("reset_multiplier", None)
-    else:
-        default_multiplier = 1.0
-    
     multiplier = st.number_input(
         "Multiplier", 
         min_value=1.0,
         max_value=100.0,
-        value=default_multiplier, 
+        value=1.0, 
         step=1.0,
-        help="Multiply the total estimate amount (1.0 = no change, 2.0 = double, etc.)"
+        help="Multiply the total estimate amount (1.0 = no change, 2.0 = double, etc.)",
+        key=f"multiplier_{form_id}"
     )
-
-    # Clear the form reset flag after all fields have been processed
-    if st.session_state.get("form_reset", False):
-        st.session_state.pop("form_reset", None)
 
     # Validate charges
     charges_valid, charges_error = FormValidator.validate_charges(handling_charge, inspection_charge)
@@ -630,7 +617,14 @@ if menu == "Create New Estimate":
                             
                             # Complete form reset after successful submission
                             
-                            # Reset line items
+                            # Clear ALL session state except essential app state
+                            keys_to_keep = {"line_items"}  # Keep only essential keys
+                            keys_to_clear = [key for key in st.session_state.keys() if key not in keys_to_keep]
+                            
+                            for key in keys_to_clear:
+                                del st.session_state[key]
+                            
+                            # Reset line items to empty state
                             st.session_state.line_items = [{
                                 "Description": "",
                                 "Quantity": 0.0,
@@ -638,29 +632,9 @@ if menu == "Create New Estimate":
                                 "Amount": 0.0,
                             }]
                             
-                            # Clear ALL form-related session state keys
-                            keys_to_clear = []
-                            for key in st.session_state.keys():
-                                if key.startswith((
-                                    "selected_item_",
-                                    "qty_", 
-                                    "price_", 
-                                    "amount_",
-                                    "item_dropdown_",
-                                    "copy_"  # Clear any copy-related states
-                                )):
-                                    keys_to_clear.append(key)
-                            
-                            for key in keys_to_clear:
-                                del st.session_state[key]
-                            
-                            # Set reset flags for input fields to force them to clear
-                            st.session_state["form_reset"] = True
-                            st.session_state["reset_customer"] = ""
-                            st.session_state["reset_capacity"] = ""
-                            st.session_state["reset_handling"] = 0.0
-                            st.session_state["reset_inspection"] = 0.0
-                            st.session_state["reset_multiplier"] = 1.0
+                            # Generate new form ID to force widget reset
+                            import time
+                            st.session_state["form_id"] = int(time.time() * 1000)  # Unique timestamp
                             
                             # Force a complete page refresh to reset all input values
                             st.rerun()
