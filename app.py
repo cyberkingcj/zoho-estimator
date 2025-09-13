@@ -151,7 +151,6 @@ if menu == "Create New Estimate":
                             
                             if "estimate" in estimate_details:
                                 estimate = estimate_details["estimate"]
-                                print(json.dumps(estimate, indent=2))
                                 # Copy customer information
                                 customer_name = estimate.get("reference_number", "")
                                 if customer_name and '\n' in customer_name:
@@ -263,8 +262,6 @@ if menu == "Create New Estimate":
                                     elif item.get("name") == "Inspection Charges":
                                         inspection_charge = float(item.get("rate", 0))
                                 
-                                print(f'Shipping charge: {estimate.get("shipping_charge")}')
-                                print(f'Shipping charge excl tax: {estimate.get("shipping_charge_exclusive_of_tax")}')
                                 if float(estimate.get("shipping_charge", 0)) > 0:
                                     handling_charge = float(estimate.get("shipping_charge"))
                                 
@@ -549,63 +546,29 @@ if menu == "Create New Estimate":
     adjustment_amount = base_total * (multiplier - 1) if multiplier > 1 else 0
     final_total = base_total + adjustment_amount
 
-    # Mobile-friendly total display
+    # Mobile-friendly total display using single-line format
     st.divider()
     st.subheader("💵 Estimate Summary")
     
-    # Mobile-friendly summary layout
-    summary_container = st.container()
-    with summary_container:
-        # Items Total
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.write("**Items Total:**")
-        with col2:
-            st.write(f"**₹{total_amount:.2f}**")
-        
-        # Handling Charges
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.write("**Handling Charges:**")
-        with col2:
-            st.write(f"**₹{handling_charge:.2f}**")
-        
-        # Inspection Charges
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.write("**Inspection Charges:**")
-        with col2:
-            st.write(f"**₹{inspection_charge:.2f}**")
-        
-        # Subtotal
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.write("**Subtotal:**")
-        with col2:
-            st.write(f"**₹{subtotal:.2f}**")
-        
-        # GST
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.write("**GST @18%:**")
-        with col2:
-            st.write(f"**₹{tax:.2f}**")
-        
-        # Adjustment (if applicable)
-        if multiplier > 1:
-            col1, col2 = st.columns([3, 2])
-            with col1:
-                st.write(f"**Adjustment (x{multiplier:.1f}):**")
-            with col2:
-                st.write(f"**₹{adjustment_amount:.2f}**")
-        
-        # Final Total with emphasis
-        st.markdown("---")
-        col1, col2 = st.columns([3, 2])
-        with col1:
-            st.markdown("### **Final Total:**")
-        with col2:
-            st.markdown(f"### **₹{final_total:.2f}**")
+    # Use markdown table for better mobile alignment
+    summary_data = f"""
+    | Description | Amount |
+    |-------------|--------|
+    | **Items Total:** | **₹{total_amount:,.2f}** |
+    | **Handling Charges:** | **₹{handling_charge:,.2f}** |
+    | **Inspection Charges:** | **₹{inspection_charge:,.2f}** |
+    | **Subtotal:** | **₹{subtotal:,.2f}** |
+    | **GST @18%:** | **₹{tax:,.2f}** |"""
+    
+    if multiplier > 1:
+        summary_data += f"""
+    | **Adjustment (x{multiplier:.1f}):** | **₹{adjustment_amount:,.2f}** |"""
+    
+    summary_data += f"""
+    | **Final Total:** | **₹{final_total:,.2f}** |
+    """
+    
+    st.markdown(summary_data)
 
     # Enhanced form submission with comprehensive validation
     st.divider()
@@ -644,14 +607,6 @@ if menu == "Create New Estimate":
                         "quantity": row["Quantity"]
                     })
 
-            if "Handling Charges" in item_map and handling_charge > 0:
-                line_items.append({
-                    "item_id": item_map["Handling Charges"]["item_id"],
-                    "name": "Handling Charges",
-                    "rate": handling_charge,
-                    "quantity": 1
-                })
-
             if "Inspection Charges" in item_map and inspection_charge > 0:
                 line_items.append({
                     "item_id": item_map["Inspection Charges"]["item_id"],
@@ -668,6 +623,10 @@ if menu == "Create New Estimate":
                 "is_inclusive_tax": False,
                 "custom_subject": to_customer + "\n" + capacity if capacity else to_customer,
             }
+
+            if "Handling Charges" in item_map and handling_charge > 0:
+                estimate_data["shipping_charge"] = handling_charge
+                estimate_data["shipping_charge_tax_id"] = "2116695000000029197"
             
             # Add adjustment if multiplier is greater than 1
             if multiplier > 1:
@@ -677,6 +636,8 @@ if menu == "Create New Estimate":
             # Create estimate with progress indicator
             with st.spinner("Creating estimate..."):
                 try:
+                    # estimate_data["shipping_charge"] = 1.18
+                    # estimate_data["shipping_charge_"]
                     result = create_estimate(estimate_data)
                     
                     if "estimate" in result:

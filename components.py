@@ -241,38 +241,22 @@ class PDFHandler:
                     adjustment = float(estimate_data.get('adjustment', 0))
                     grand_total = subtotal + tax + adjustment
                     
-                    # Mobile-friendly totals display
-                    totals_container = st.container()
-                    with totals_container:
-                        # Subtotal
-                        col1, col2 = st.columns([3, 2])
-                        with col1:
-                            st.write("**Subtotal:**")
-                        with col2:
-                            st.write(f"**₹{subtotal:,.2f}**")
-                        
-                        # Tax
-                        col1, col2 = st.columns([3, 2])
-                        with col1:
-                            st.write("**Tax (18%):**")
-                        with col2:
-                            st.write(f"**₹{tax:,.2f}**")
-                        
-                        # Adjustment (if applicable)
-                        if adjustment > 0:
-                            col1, col2 = st.columns([3, 2])
-                            with col1:
-                                st.write(f"**Adjustment ({estimate_data.get('adjustment_description', '')}):**")
-                            with col2:
-                                st.write(f"**₹{adjustment:,.2f}**")
-                        
-                        # Grand Total with emphasis
-                        st.markdown("---")
-                        col1, col2 = st.columns([3, 2])
-                        with col1:
-                            st.markdown("### **Grand Total:**")
-                        with col2:
-                            st.markdown(f"### **₹{grand_total:,.2f}**")
+                    # Mobile-friendly totals using markdown table
+                    totals_data = f"""
+                    | Description | Amount |
+                    |-------------|--------|
+                    | **Subtotal:** | **₹{subtotal:,.2f}** |
+                    | **Tax (18%):** | **₹{tax:,.2f}** |"""
+                    
+                    if adjustment > 0:
+                        totals_data += f"""
+                    | **Adjustment ({estimate_data.get('adjustment_description', '')}):** | **₹{adjustment:,.2f}** |"""
+                    
+                    totals_data += f"""
+                    | **Grand Total:** | **₹{grand_total:,.2f}** |
+                    """
+                    
+                    st.markdown(totals_data)
                 
                 else:
                     st.info("No line items found in estimate")
