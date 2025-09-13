@@ -355,76 +355,69 @@ if menu == "Create New Estimate":
     updated_items = []
     running_total = 0
     item_deleted = False
-
+    
     for idx, row in enumerate(st.session_state.line_items):
-        # Mobile-friendly line item layout
         st.markdown(f"**Item {idx+1}**")
         if idx > 0:  # Show running total
             st.caption(f"*Running Total: ₹{running_total:,.0f}*")
         
-        # Mobile-responsive layout: stack on small screens
-        with st.container():
-            # Item selection (full width on mobile)
-            current_search = row.get("Description", "")
-            selected_item = item_selector.render_item_selector(
-                key=f"item_{idx}",
-                current_value=current_search
+        # Item selection (full width)
+        current_search = row.get("Description", "")
+        selected_item = item_selector.render_item_selector(
+            key=f"item_{idx}",
+            current_value=current_search
+        )
+        
+        # Update session state if item is selected
+        if selected_item:
+            st.session_state[f"selected_item_{idx}"] = selected_item
+
+        # Get the selected item for this row
+        current_item = st.session_state.get(f"selected_item_{idx}")
+        
+        # Initialize widget values in session state if not exists
+        qty_key = f"qty_{idx}"
+        price_key = f"price_{idx}"
+        
+        if qty_key not in st.session_state:
+            st.session_state[qty_key] = int(row["Quantity"]) if row["Quantity"] else 0
+        
+        if price_key not in st.session_state:
+            default_price = current_item["rate"] if current_item else row["Price"]
+            st.session_state[price_key] = float(default_price) if default_price else 0.0
+        
+        # Auto-update price when item is selected
+        if current_item and st.session_state[price_key] == 0.0:
+            st.session_state[price_key] = float(current_item["rate"])
+        
+        # Simple input layout
+        input_cols = st.columns([2, 2, 1])
+        
+        with input_cols[0]:
+            qty = st.number_input(
+                "Quantity", 
+                min_value=0, 
+                step=1, 
+                key=qty_key,
+                format="%d"
             )
-            
-            # Update session state if item is selected
-            if selected_item:
-                st.session_state[f"selected_item_{idx}"] = selected_item
+        
+        with input_cols[1]:
+            price = st.number_input(
+                "Unit Price", 
+                min_value=0.0, 
+                step=50.0,
+                key=price_key,
+                format="%.2f"
+            )
+        
+        amount = float(qty) * float(price)
+        
+        with input_cols[2]:
+            st.write("")  # Spacer for alignment
+            remove = st.button("🗑️ Remove", key=f"remove_{idx}", use_container_width=True)
 
-            # Quantity, Price, Amount in responsive columns
-            mobile_cols = st.columns([2, 2, 2, 1])
-            
-            # Get the selected item for this row
-            current_item = st.session_state.get(f"selected_item_{idx}")
-            
-            # Initialize widget values in session state if not exists
-            qty_key = f"qty_{idx}"
-            price_key = f"price_{idx}"
-            
-            if qty_key not in st.session_state:
-                st.session_state[qty_key] = int(row["Quantity"]) if row["Quantity"] else 0
-            
-            if price_key not in st.session_state:
-                default_price = current_item["rate"] if current_item else row["Price"]
-                st.session_state[price_key] = float(default_price) if default_price else 0.0
-            
-            # Auto-update price when item is selected
-            if current_item and st.session_state[price_key] == 0.0:
-                st.session_state[price_key] = float(current_item["rate"])
-            
-            # Mobile-friendly inputs
-            with mobile_cols[0]:
-                qty = st.number_input(
-                    "Quantity", 
-                    min_value=0, 
-                    step=1, 
-                    key=qty_key,
-                    format="%d"
-                )
-            
-            with mobile_cols[1]:
-                price = st.number_input(
-                    "Price", 
-                    min_value=0.0, 
-                    step=50.0,
-                    key=price_key,
-                    format="%.2f"
-                )
-            
-            amount = float(qty) * float(price)
-            
-            with mobile_cols[2]:
-                st.metric("Amount", f"₹{amount:,.2f}")
-            
-            # Delete button
-            with mobile_cols[3]:
-                remove = st.button("🗑️", key=f"remove_{idx}", help="Remove", use_container_width=True)
-
-        # Compact validation messages
+        # Validation messages
         if qty > 0 and not current_item:
             st.error(f"⚠️ Select item {idx+1}", icon="⚠️")
         elif qty > 0 and price <= 0:
@@ -441,15 +434,15 @@ if menu == "Create New Estimate":
             running_total += amount
         else:
             # Clean up session state when item is removed
-            keys_to_clean = [f"selected_item_{idx}", f"qty_{idx}", f"price_{idx}"]
+            keys_to_clean = [f"selected_item_{idx}", f"qty_{idx}", f"price_{idx}", f"amount_display_{idx}"]
             for key in keys_to_clean:
                 if key in st.session_state:
                     del st.session_state[key]
             item_deleted = True
         
-        # Minimal spacing between items
+        # Add divider between items for better separation
         if idx < len(st.session_state.line_items) - 1:
-            st.write("")  # Just a small gap instead of divider
+            st.divider()
     
     # Update line items
     st.session_state.line_items = updated_items
@@ -549,6 +542,29 @@ if menu == "Create New Estimate":
     # Mobile-friendly total display using single-line format
     st.divider()
     st.subheader("💵 Estimate Summary")
+    
+    # Show line items table
+    if st.session_state.line_items and any(item.get('Quantity', 0) > 0 for item in st.session_state.line_items):
+        st.subheader("📦 Line Items")
+        
+        # Create line items table
+        line_items_table = """
+| Item | Qty | Unit Price | Total |
+|------|-----|------------|-------|"""
+        
+        for item in st.session_state.line_items:
+            if item.get('Quantity', 0) > 0 and item.get('Description'):
+                qty = int(item['Quantity'])
+                price = float(item['Price'])
+                amount = float(item['Amount'])
+                line_items_table += f"""
+| {item['Description']} | {qty} | ₹{price:,.2f} | ₹{amount:,.2f} |"""
+        
+        st.markdown(line_items_table)
+        st.divider()
+    
+    # Totals section
+    st.subheader("💰 Totals")
     
     # Use markdown table for better mobile alignment
     summary_data = f"""
