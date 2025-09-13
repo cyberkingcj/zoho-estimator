@@ -177,57 +177,123 @@ class PDFHandler:
             return False, b"", f"Error generating PDF: {str(e)}"
     
     @staticmethod
-    def render_pdf_preview(pdf_data: bytes, filename: str = "estimate.pdf"):
-        """Render PDF preview with mobile-friendly fallback"""
-        import base64
-        import tempfile
+    def _is_streamlit_cloud():
+        """Detect if running on Streamlit Cloud"""
         import os
-        
+        return (
+            os.getenv('STREAMLIT_SHARING_MODE') == 'true' or
+            os.getenv('STREAMLIT_CLOUD') == 'true' or
+            'streamlit.app' in os.getenv('HOSTNAME', '') or
+            'streamlitapp.com' in os.getenv('HOSTNAME', '')
+        )
+    
+    @staticmethod
+    def render_pdf_preview(pdf_data: bytes, filename: str = "estimate.pdf"):
+        """Render PDF preview optimized for Streamlit Cloud"""
         try:
-            # Create base64 encoded PDF
-            base64_pdf = base64.b64encode(pdf_data).decode('utf-8')
+            # Validate PDF data
+            if not pdf_data or not pdf_data.startswith(b'%PDF'):
+                st.error("❌ Invalid PDF data received")
+                return
             
-            # Mobile-friendly approach: Always show download button
-            st.download_button(
-                "📥 Download PDF",
-                data=pdf_data,
-                file_name=filename,
-                mime="application/pdf",
-                use_container_width=True
-            )
+            # Show PDF info
+            pdf_size = len(pdf_data)
+            st.info(f"📄 PDF generated successfully ({pdf_size:,} bytes)")
             
-            # Desktop preview with fallback
-            st.subheader("PDF Preview")
+            # Primary download button (always works)
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                st.download_button(
+                    "📥 Download PDF",
+                    data=pdf_data,
+                    file_name=filename,
+                    mime="application/pdf",
+                    use_container_width=True,
+                    type="primary"
+                )
             
-            # Try iframe first (works on most desktop browsers)
-            try:
-                st.markdown(
-                    f"""
-                    <div style="width: 100%; height: 600px; border: 1px solid #ddd; border-radius: 5px; overflow: hidden;">
-                        <iframe
-                            src="data:application/pdf;base64,{base64_pdf}"
-                            width="100%"
-                            height="100%"
-                            style="border: none;">
-                            <p>PDF preview not supported in this browser. Please download the file.</p>
+            with col2:
+                # Show file info
+                st.metric("File Size", f"{pdf_size/1024:.1f} KB")
+            
+            # Cloud-friendly preview section
+            st.subheader("📋 PDF Preview")
+            
+            # Check if we're on Streamlit Cloud
+            is_cloud = PDFHandler._is_streamlit_cloud()
+            
+            if is_cloud:
+                # On Streamlit Cloud - skip iframe preview, show info instead
+                st.info("""
+                🌐 **Running on Streamlit Cloud**
+                
+                PDF preview is not available on Streamlit Cloud due to security restrictions.
+                
+                **To view your estimate:**
+                1. Click the "📥 Download PDF" button above
+                2. Open the downloaded file with any PDF viewer
+                3. The PDF contains your complete estimate with all details
+                """)
+                
+                # Show estimate summary as text preview
+                st.subheader("📊 Estimate Summary")
+                st.success("✅ Your estimate PDF has been generated successfully and is ready for download!")
+                
+            else:
+                # Local/other environments - try iframe preview
+                preview_success = False
+                
+                try:
+                    import base64
+                    base64_pdf = base64.b64encode(pdf_data).decode('utf-8')
+                    
+                    # Use iframe approach for local development
+                    iframe_html = f"""
+                    <div style="text-align: center; padding: 20px; border: 2px dashed #ccc; border-radius: 10px;">
+                        <p><strong>PDF Preview</strong></p>
+                        <iframe src="data:application/pdf;base64,{base64_pdf}" 
+                                width="100%" height="500px" 
+                                style="border: 1px solid #ddd;">
+                            <p>Your browser does not support PDF preview. Please download the file.</p>
                         </iframe>
                     </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-            except Exception:
-                # Fallback: Show download message
-                st.info("PDF preview not available in this browser. Please use the download button above.")
+                    """
+                    
+                    st.markdown(iframe_html, unsafe_allow_html=True)
+                    preview_success = True
+                    
+                except Exception as e:
+                    st.warning(f"PDF preview failed: {str(e)}")
+                    preview_success = False
+                
+                # Fallback for local environments too
+                if not preview_success:
+                st.info("""
+                🔍 **PDF Preview Not Available**
+                
+                PDF preview is not supported in this environment. This is common on cloud platforms due to security restrictions.
+                
+                **To view your estimate:**
+                1. Click the "📥 Download PDF" button above
+                2. Open the downloaded file with any PDF viewer
+                3. The PDF contains your complete estimate with all details
+                """)
+                
+                # Show estimate summary as text preview
+                st.subheader("📊 Estimate Summary")
+                st.success("✅ Your estimate PDF has been generated successfully and is ready for download!")
                 
         except Exception as e:
-            st.error(f"Error displaying PDF: {str(e)}")
-            # Still provide download option
-            st.download_button(
-                "📥 Download PDF (Preview Failed)",
-                data=pdf_data,
-                file_name=filename,
-                mime="application/pdf"
-            )
+            st.error(f"❌ Error handling PDF: {str(e)}")
+            # Emergency fallback - still provide download
+            if pdf_data:
+                st.download_button(
+                    "📥 Emergency Download",
+                    data=pdf_data,
+                    file_name=filename,
+                    mime="application/pdf",
+                    help="PDF preview failed, but download should work"
+                )
     
     @staticmethod
     def show_pdf_success(estimate_id: str, customer_name: str):
