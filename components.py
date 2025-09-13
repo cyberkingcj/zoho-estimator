@@ -177,19 +177,8 @@ class PDFHandler:
             return False, b"", f"Error generating PDF: {str(e)}"
     
     @staticmethod
-    def _is_streamlit_cloud():
-        """Detect if running on Streamlit Cloud"""
-        import os
-        return (
-            os.getenv('STREAMLIT_SHARING_MODE') == 'true' or
-            os.getenv('STREAMLIT_CLOUD') == 'true' or
-            'streamlit.app' in os.getenv('HOSTNAME', '') or
-            'streamlitapp.com' in os.getenv('HOSTNAME', '')
-        )
-    
-    @staticmethod
-    def render_pdf_preview(pdf_data: bytes, filename: str = "estimate.pdf"):
-        """Render PDF preview optimized for Streamlit Cloud"""
+    def render_estimate_summary(pdf_data: bytes, filename: str = "estimate.pdf", estimate_data: dict = None):
+        """Render estimate summary in table format with download option"""
         try:
             # Validate PDF data
             if not pdf_data or not pdf_data.startswith(b'%PDF'):
@@ -198,93 +187,116 @@ class PDFHandler:
             
             # Show PDF info
             pdf_size = len(pdf_data)
-            st.info(f"📄 PDF generated successfully ({pdf_size:,} bytes)")
             
-            # Primary download button (always works)
-            col1, col2 = st.columns([2, 1])
+            # Show estimate summary in table format
+            st.subheader("📊 Estimate Summary")
+            estimate_number = ''
+            if estimate_data:
+                # Extract estimate information
+                customer_name = estimate_data.get('reference_number', '').split('\n')[0] if estimate_data.get('reference_number') else 'N/A'
+                estimate_date = estimate_data.get('date', 'N/A')
+                estimate_number = estimate_data.get('estimate_number', '')
+                capacity = ''
+                if len(estimate_data.get('reference_number', '').split('\n'))>1:
+                    capacity = estimate_data.get('reference_number', '').split('\n')[1]
+                # Show basic info
+                info_col1, info_col2 = st.columns(2)
+                with info_col1:
+                    st.write(f"**Customer:** {customer_name}")
+                    st.write(f"**Date:** {estimate_date}")
+                    if capacity:
+                        st.write(f"**Capacity:** {capacity}")
+                
+                with info_col2:
+                    if estimate_data.get('adjustment'):
+                        st.write(f"**Multiplier:** {estimate_data.get('adjustment_description', 'N/A')}")
+                    # st.write(f"**Tax Inclusive:** {'Yes' if estimate_data.get('is_inclusive_tax') else 'No'}")
+                
+                # Show line items in table format
+                st.subheader("📦 Line Items")
+                
+                line_items = estimate_data.get('line_items', [])
+                if line_items:
+                    # Create DataFrame for line items
+                    import pandas as pd
+                    
+                    items_data = []
+                    subtotal = 0
+                    
+                    for item in line_items:
+                        item_total = float(item.get('quantity', 0)) * float(item.get('rate', 0))
+                        items_data.append({
+                            'Item': item.get('name', 'N/A'),
+                            'Quantity': int(item.get('quantity', 0)),
+                            'Rate': f"₹{float(item.get('rate', 0)):,.2f}",
+                            'Amount': f"₹{item_total:,.2f}"
+                        })
+                        subtotal += item_total
+                    
+                    # Display items table
+                    df = pd.DataFrame(items_data)
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    
+                    # Show totals
+                    st.divider()
+                    st.subheader("💰 Totals")
+                    
+                    total_col1, total_col2 = st.columns([2, 1])
+                    with total_col1:
+                        st.write("**Subtotal:**")
+                        st.write("**Tax (18%):**")
+                        if estimate_data.get('adjustment'):
+                            st.write(f"**Adjustment ({estimate_data.get('adjustment_description', '')}):**")
+                        st.write("### **Grand Total:**")
+                    
+                    with total_col2:
+                        tax = subtotal * 0.18
+                        adjustment = float(estimate_data.get('adjustment', 0))
+                        grand_total = subtotal + tax + adjustment
+                        
+                        st.write(f"₹{subtotal:,.2f}")
+                        st.write(f"₹{tax:,.2f}")
+                        if adjustment > 0:
+                            st.write(f"₹{adjustment:,.2f}")
+                        st.write(f"### ₹{grand_total:,.2f}")
+                
+                else:
+                    st.info("No line items found in estimate")
+            
+            else:
+                # Fallback when no estimate data is provided
+                st.info("""
+                📋 **Estimate Details**
+                
+                Your estimate has been generated successfully! 
+                
+                **To view complete details:**
+                1. Click the "📥 Download PDF" button below
+                2. Open the downloaded file to see all estimate details
+                3. The PDF contains itemized breakdown, totals, and formatting
+                """)
+            
+            # Download button at the end
+            st.divider()
+            col1, col2, col3 = st.columns([2, 1, 1])
             with col1:
                 st.download_button(
                     "📥 Download PDF",
                     data=pdf_data,
-                    file_name=filename,
+                    file_name=(estimate_number+'.pdf') if estimate_number else filename,
                     mime="application/pdf",
                     use_container_width=True,
                     type="primary"
                 )
             
             with col2:
-                # Show file info
                 st.metric("File Size", f"{pdf_size/1024:.1f} KB")
             
-            # Cloud-friendly preview section
-            st.subheader("📋 PDF Preview")
-            
-            # Check if we're on Streamlit Cloud
-            is_cloud = PDFHandler._is_streamlit_cloud()
-            
-            if is_cloud:
-                # On Streamlit Cloud - skip iframe preview, show info instead
-                st.info("""
-                🌐 **Running on Streamlit Cloud**
-                
-                PDF preview is not available on Streamlit Cloud due to security restrictions.
-                
-                **To view your estimate:**
-                1. Click the "📥 Download PDF" button above
-                2. Open the downloaded file with any PDF viewer
-                3. The PDF contains your complete estimate with all details
-                """)
-                
-                # Show estimate summary as text preview
-                st.subheader("📊 Estimate Summary")
-                st.success("✅ Your estimate PDF has been generated successfully and is ready for download!")
-                
-            else:
-                # Local/other environments - try iframe preview
-                preview_success = False
-                
-                try:
-                    import base64
-                    base64_pdf = base64.b64encode(pdf_data).decode('utf-8')
-                    
-                    # Use iframe approach for local development
-                    iframe_html = f"""
-                    <div style="text-align: center; padding: 20px; border: 2px dashed #ccc; border-radius: 10px;">
-                        <p><strong>PDF Preview</strong></p>
-                        <iframe src="data:application/pdf;base64,{base64_pdf}" 
-                                width="100%" height="500px" 
-                                style="border: 1px solid #ddd;">
-                            <p>Your browser does not support PDF preview. Please download the file.</p>
-                        </iframe>
-                    </div>
-                    """
-                    
-                    st.markdown(iframe_html, unsafe_allow_html=True)
-                    preview_success = True
-                    
-                except Exception as e:
-                    st.warning(f"PDF preview failed: {str(e)}")
-                    preview_success = False
-                
-                # Fallback for local environments too
-                if not preview_success:
-                st.info("""
-                🔍 **PDF Preview Not Available**
-                
-                PDF preview is not supported in this environment. This is common on cloud platforms due to security restrictions.
-                
-                **To view your estimate:**
-                1. Click the "📥 Download PDF" button above
-                2. Open the downloaded file with any PDF viewer
-                3. The PDF contains your complete estimate with all details
-                """)
-                
-                # Show estimate summary as text preview
-                st.subheader("📊 Estimate Summary")
-                st.success("✅ Your estimate PDF has been generated successfully and is ready for download!")
+            with col3:
+                st.success("✅ Generated")
                 
         except Exception as e:
-            st.error(f"❌ Error handling PDF: {str(e)}")
+            st.error(f"❌ Error displaying estimate summary: {str(e)}")
             # Emergency fallback - still provide download
             if pdf_data:
                 st.download_button(
@@ -292,7 +304,7 @@ class PDFHandler:
                     data=pdf_data,
                     file_name=filename,
                     mime="application/pdf",
-                    help="PDF preview failed, but download should work"
+                    help="Summary display failed, but download should work"
                 )
     
     @staticmethod

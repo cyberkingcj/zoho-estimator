@@ -627,10 +627,11 @@ if menu == "Create New Estimate":
                         )
                         
                         if success:
-                            # Enhanced PDF preview and download
-                            PDFHandler.render_pdf_preview(
+                            # Enhanced estimate summary and download
+                            PDFHandler.render_estimate_summary(
                                 pdf_data, 
-                                f"estimate_{estimate_id}_{to_customer.replace(' ', '_')}.pdf"
+                                f"estimate_{estimate_id}_{to_customer.replace(' ', '_')}.pdf",
+                                estimate_data
                             )
                             
                             # Complete form reset after successful submission
@@ -688,15 +689,7 @@ elif menu == "Download Estimate":
         df['date'] = pd.to_datetime(df['date']).dt.date
         df = df[['estimate_id', 'estimate_number', 'reference_number', 'customer_name', 'date', 'total']]
         
-        # Show estimates table
-        st.subheader("📊 Available Estimates")
-        st.dataframe(
-            df[['estimate_number', 'customer_name', 'reference_number', 'date', 'total']], 
-            use_container_width=True,
-            hide_index=True
-        )
-        
-        st.divider()
+
 
         # Enhanced estimate selection with reference numbers
         col1, col2 = st.columns([2, 1])
@@ -739,15 +732,15 @@ elif menu == "Download Estimate":
             customer_name = estimate_row['customer_name']
             
             # Show estimate details
-            st.subheader(f"📄 Estimate Details: {selected}")
-            detail_col1, detail_col2 = st.columns(2)
+            # st.subheader(f"📄 Estimate Details: {selected}")
+            # detail_col1, detail_col2 = st.columns(2)
             
-            with detail_col1:
-                st.write(f"**Reference:** {estimate_row['reference_number']}")
-            with detail_col2:
-                st.write(f"**Date:** {estimate_row['date']}")
+            # with detail_col1:
+            #     st.write(f"**Customer:** {estimate_row['reference_number']}")
+            # with detail_col2:
+            #     st.write(f"**Date:** {estimate_row['date']}")
             
-            st.divider()
+            # st.divider()
             
             # Enhanced PDF download with error handling
             success, pdf_data, error_msg = PDFHandler.download_with_progress(
@@ -756,10 +749,21 @@ elif menu == "Download Estimate":
             )
             
             if success:
-                # Enhanced PDF preview and download
-                PDFHandler.render_pdf_preview(
+                # Try to fetch estimate details for summary
+                estimate_details = None
+                try:
+                    from zoho_api import fetch_estimate_details
+                    details_response = fetch_estimate_details(estimate_id)
+                    if "estimate" in details_response:
+                        estimate_details = details_response["estimate"]
+                except Exception as e:
+                    st.warning(f"Could not fetch estimate details: {str(e)}")
+                
+                # Enhanced estimate summary and download
+                PDFHandler.render_estimate_summary(
                     pdf_data, 
-                    f"{selected}_{customer_name.replace(' ', '_')}.pdf"
+                    f"{selected}_{customer_name.replace(' ', '_')}.pdf",
+                    estimate_details
                 )
             else:
                 st.error(f"❌ {error_msg}")
