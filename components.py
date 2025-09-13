@@ -199,18 +199,13 @@ class PDFHandler:
                 capacity = ''
                 if len(estimate_data.get('reference_number', '').split('\n'))>1:
                     capacity = estimate_data.get('reference_number', '').split('\n')[1]
-                # Show basic info
-                info_col1, info_col2 = st.columns(2)
-                with info_col1:
-                    st.write(f"**Customer:** {customer_name}")
-                    st.write(f"**Date:** {estimate_date}")
-                    if capacity:
-                        st.write(f"**Capacity:** {capacity}")
-                
-                with info_col2:
-                    if estimate_data.get('adjustment'):
-                        st.write(f"**Multiplier:** {estimate_data.get('adjustment_description', 'N/A')}")
-                    # st.write(f"**Tax Inclusive:** {'Yes' if estimate_data.get('is_inclusive_tax') else 'No'}")
+                # Mobile-friendly basic info - stack vertically
+                st.write(f"**Customer:** {customer_name}")
+                st.write(f"**Date:** {estimate_date}")
+                if capacity:
+                    st.write(f"**Capacity:** {capacity}")
+                if estimate_data.get('adjustment'):
+                    st.write(f"**Multiplier:** {estimate_data.get('adjustment_description', 'N/A')}")
                 
                 # Show line items in table format
                 st.subheader("📦 Line Items")
@@ -237,28 +232,47 @@ class PDFHandler:
                     df = pd.DataFrame(items_data)
                     st.dataframe(df, use_container_width=True, hide_index=True)
                     
-                    # Show totals
+                    # Show totals - Mobile-friendly format
                     st.divider()
                     st.subheader("💰 Totals")
                     
-                    total_col1, total_col2 = st.columns([2, 1])
-                    with total_col1:
-                        st.write("**Subtotal:**")
-                        st.write("**Tax (18%):**")
-                        if estimate_data.get('adjustment'):
-                            st.write(f"**Adjustment ({estimate_data.get('adjustment_description', '')}):**")
-                        st.write("### **Grand Total:**")
+                    # Calculate totals
+                    tax = subtotal * 0.18
+                    adjustment = float(estimate_data.get('adjustment', 0))
+                    grand_total = subtotal + tax + adjustment
                     
-                    with total_col2:
-                        tax = subtotal * 0.18
-                        adjustment = float(estimate_data.get('adjustment', 0))
-                        grand_total = subtotal + tax + adjustment
+                    # Mobile-friendly totals display
+                    totals_container = st.container()
+                    with totals_container:
+                        # Subtotal
+                        col1, col2 = st.columns([3, 2])
+                        with col1:
+                            st.write("**Subtotal:**")
+                        with col2:
+                            st.write(f"**₹{subtotal:,.2f}**")
                         
-                        st.write(f"₹{subtotal:,.2f}")
-                        st.write(f"₹{tax:,.2f}")
+                        # Tax
+                        col1, col2 = st.columns([3, 2])
+                        with col1:
+                            st.write("**Tax (18%):**")
+                        with col2:
+                            st.write(f"**₹{tax:,.2f}**")
+                        
+                        # Adjustment (if applicable)
                         if adjustment > 0:
-                            st.write(f"₹{adjustment:,.2f}")
-                        st.write(f"### ₹{grand_total:,.2f}")
+                            col1, col2 = st.columns([3, 2])
+                            with col1:
+                                st.write(f"**Adjustment ({estimate_data.get('adjustment_description', '')}):**")
+                            with col2:
+                                st.write(f"**₹{adjustment:,.2f}**")
+                        
+                        # Grand Total with emphasis
+                        st.markdown("---")
+                        col1, col2 = st.columns([3, 2])
+                        with col1:
+                            st.markdown("### **Grand Total:**")
+                        with col2:
+                            st.markdown(f"### **₹{grand_total:,.2f}**")
                 
                 else:
                     st.info("No line items found in estimate")

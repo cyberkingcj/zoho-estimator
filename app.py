@@ -11,7 +11,50 @@ import tempfile
 import json
 import json
 
-st.set_page_config(page_title="Zoho Estimator", layout="wide")
+st.set_page_config(
+    page_title="Zoho Estimator", 
+    layout="wide",
+    initial_sidebar_state="collapsed"  # Better for mobile
+)
+
+# Add mobile-friendly CSS
+st.markdown("""
+<style>
+    /* Mobile responsiveness improvements */
+    @media (max-width: 768px) {
+        .stSelectbox > div > div {
+            font-size: 14px;
+        }
+        .stNumberInput > div > div > input {
+            font-size: 14px;
+        }
+        .stTextInput > div > div > input {
+            font-size: 14px;
+        }
+        .stMetric {
+            background-color: #f0f2f6;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            margin: 0.25rem 0;
+        }
+        .stButton > button {
+            width: 100%;
+            margin: 0.25rem 0;
+        }
+    }
+    
+    /* Improve table readability on mobile */
+    .stDataFrame {
+        font-size: 12px;
+    }
+    
+    /* Better spacing for mobile */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 st.title("JSV DISTRIBUTERS")
 
 menu = st.sidebar.radio("Choose Action", ["Create New Estimate", "Download Estimate"])
@@ -317,20 +360,14 @@ if menu == "Create New Estimate":
     item_deleted = False
 
     for idx, row in enumerate(st.session_state.line_items):
-        # Compact line item layout without extra containers
-        # Header row with item number and running total
-        header_cols = st.columns([2, 2, 1, 1, 1, 1])
-        with header_cols[0]:
-            st.caption(f"**Item {idx+1}**")
-        with header_cols[5]:
-            if idx > 0:  # Show running total from second item onwards
-                st.caption(f"*Total: ₹{running_total:,.0f}*")
+        # Mobile-friendly line item layout
+        st.markdown(f"**Item {idx+1}**")
+        if idx > 0:  # Show running total
+            st.caption(f"*Running Total: ₹{running_total:,.0f}*")
         
-        # Main input row - tighter spacing
-        cols = st.columns([5, 1.5, 1.5, 1.5, 0.8])
-        
-        # Single dropdown for search and select
-        with cols[0]:
+        # Mobile-responsive layout: stack on small screens
+        with st.container():
+            # Item selection (full width on mobile)
             current_search = row.get("Description", "")
             selected_item = item_selector.render_item_selector(
                 key=f"item_{idx}",
@@ -341,61 +378,54 @@ if menu == "Create New Estimate":
             if selected_item:
                 st.session_state[f"selected_item_{idx}"] = selected_item
 
-        # Get the selected item for this row
-        current_item = st.session_state.get(f"selected_item_{idx}")
-        
-        # Initialize widget values in session state if not exists
-        qty_key = f"qty_{idx}"
-        price_key = f"price_{idx}"
-        
-        if qty_key not in st.session_state:
-            st.session_state[qty_key] = int(row["Quantity"]) if row["Quantity"] else 0
-        
-        if price_key not in st.session_state:
-            default_price = current_item["rate"] if current_item else row["Price"]
-            st.session_state[price_key] = float(default_price) if default_price else 0.0
-        
-        # Auto-update price when item is selected
-        if current_item and st.session_state[price_key] == 0.0:
-            st.session_state[price_key] = float(current_item["rate"])
-        
-        # Compact inputs with aligned delete button
-        qty = cols[1].number_input(
-            "Qty", 
-            min_value=0, 
-            step=1, 
-            key=qty_key,
-            help="Quantity",
-            format="%d",
-            label_visibility="collapsed"
-        )
-        
-        price = cols[2].number_input(
-            "Price", 
-            min_value=0.0, 
-            step=50.0,
-            key=price_key,
-            help="Price per unit",
-            format="%.2f",
-            label_visibility="collapsed"
-        )
-        
-        amount = float(qty) * float(price)
-        
-        # Compact amount display
-        with cols[3]:
-            st.text_input(
-                "Amount",
-                value=f"₹{amount:,.2f}",
-                disabled=True,
-                label_visibility="collapsed",
-                help="Total amount",
-                key=f"amount_{idx}"  # Add unique key to fix duplicate ID error
-            )
-        
-        # Aligned delete button
-        with cols[4]:
-            remove = st.button("🗑️", key=f"remove_{idx}", help="Remove item", use_container_width=True)
+            # Quantity, Price, Amount in responsive columns
+            mobile_cols = st.columns([2, 2, 2, 1])
+            
+            # Get the selected item for this row
+            current_item = st.session_state.get(f"selected_item_{idx}")
+            
+            # Initialize widget values in session state if not exists
+            qty_key = f"qty_{idx}"
+            price_key = f"price_{idx}"
+            
+            if qty_key not in st.session_state:
+                st.session_state[qty_key] = int(row["Quantity"]) if row["Quantity"] else 0
+            
+            if price_key not in st.session_state:
+                default_price = current_item["rate"] if current_item else row["Price"]
+                st.session_state[price_key] = float(default_price) if default_price else 0.0
+            
+            # Auto-update price when item is selected
+            if current_item and st.session_state[price_key] == 0.0:
+                st.session_state[price_key] = float(current_item["rate"])
+            
+            # Mobile-friendly inputs
+            with mobile_cols[0]:
+                qty = st.number_input(
+                    "Quantity", 
+                    min_value=0, 
+                    step=1, 
+                    key=qty_key,
+                    format="%d"
+                )
+            
+            with mobile_cols[1]:
+                price = st.number_input(
+                    "Price", 
+                    min_value=0.0, 
+                    step=50.0,
+                    key=price_key,
+                    format="%.2f"
+                )
+            
+            amount = float(qty) * float(price)
+            
+            with mobile_cols[2]:
+                st.metric("Amount", f"₹{amount:,.2f}")
+            
+            # Delete button
+            with mobile_cols[3]:
+                remove = st.button("🗑️", key=f"remove_{idx}", help="Remove", use_container_width=True)
 
         # Compact validation messages
         if qty > 0 and not current_item:
@@ -455,11 +485,13 @@ if menu == "Create New Estimate":
 
     total_amount = sum(row["Amount"] for row in st.session_state.line_items)
 
-    # Charges section with validation
+    # Charges section with validation - Mobile responsive
     st.subheader("💰 Additional Charges")
-    col1, col2 = st.columns(2)
     
-    with col1:
+    # Stack charges vertically on mobile, side by side on desktop
+    charges_cols = st.columns([1, 1])
+    
+    with charges_cols[0]:
         # Use copied or default handling charge
         default_handling = st.session_state.get("copy_handling_charge", 0.0)
         
@@ -475,7 +507,7 @@ if menu == "Create New Estimate":
         if "copy_handling_charge" in st.session_state:
             del st.session_state["copy_handling_charge"]
     
-    with col2:
+    with charges_cols[1]:
         # Use copied or default inspection charge
         default_inspection = st.session_state.get("copy_inspection_charge", 0.0)
         
@@ -517,30 +549,63 @@ if menu == "Create New Estimate":
     adjustment_amount = base_total * (multiplier - 1) if multiplier > 1 else 0
     final_total = base_total + adjustment_amount
 
-    # Enhanced total display
+    # Mobile-friendly total display
     st.divider()
     st.subheader("💵 Estimate Summary")
     
-    summary_col1, summary_col2 = st.columns([2, 1])
-    with summary_col1:
-        st.write("**Items Total:**")
-        st.write("**Handling Charges:**")
-        st.write("**Inspection Charges:**")
-        st.write("**Subtotal:**")
-        st.write("**GST @18%:**")
+    # Mobile-friendly summary layout
+    summary_container = st.container()
+    with summary_container:
+        # Items Total
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            st.write("**Items Total:**")
+        with col2:
+            st.write(f"**₹{total_amount:.2f}**")
+        
+        # Handling Charges
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            st.write("**Handling Charges:**")
+        with col2:
+            st.write(f"**₹{handling_charge:.2f}**")
+        
+        # Inspection Charges
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            st.write("**Inspection Charges:**")
+        with col2:
+            st.write(f"**₹{inspection_charge:.2f}**")
+        
+        # Subtotal
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            st.write("**Subtotal:**")
+        with col2:
+            st.write(f"**₹{subtotal:.2f}**")
+        
+        # GST
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            st.write("**GST @18%:**")
+        with col2:
+            st.write(f"**₹{tax:.2f}**")
+        
+        # Adjustment (if applicable)
         if multiplier > 1:
-            st.write(f"**Adjustment (x{multiplier:.1f}):**")
-        st.write("### **Final Total:**")
-    
-    with summary_col2:
-        st.write(f"₹{total_amount:.2f}")
-        st.write(f"₹{handling_charge:.2f}")
-        st.write(f"₹{inspection_charge:.2f}")
-        st.write(f"₹{subtotal:.2f}")
-        st.write(f"₹{tax:.2f}")
-        if multiplier > 1:
-            st.write(f"₹{adjustment_amount:.2f}")
-        st.write(f"### ₹{final_total:.2f}")
+            col1, col2 = st.columns([3, 2])
+            with col1:
+                st.write(f"**Adjustment (x{multiplier:.1f}):**")
+            with col2:
+                st.write(f"**₹{adjustment_amount:.2f}**")
+        
+        # Final Total with emphasis
+        st.markdown("---")
+        col1, col2 = st.columns([3, 2])
+        with col1:
+            st.markdown("### **Final Total:**")
+        with col2:
+            st.markdown(f"### **₹{final_total:.2f}**")
 
     # Enhanced form submission with comprehensive validation
     st.divider()
@@ -691,56 +756,44 @@ elif menu == "Download Estimate":
         
 
 
-        # Enhanced estimate selection with reference numbers
-        col1, col2 = st.columns([2, 1])
+        # Mobile-friendly estimate selection
+        # Create dropdown options with both estimate number and reference number
+        dropdown_options = []
+        option_map = {}
         
-        with col1:
-            # Create dropdown options with both estimate number and reference number
-            dropdown_options = []
-            option_map = {}
+        for _, row in df.iterrows():
+            # Create display text with estimate number and reference number
+            display_text = f"{row['estimate_number']}"
+            if row['reference_number'] and str(row['reference_number']).strip():
+                # Clean up reference number (remove newlines, limit length for mobile)
+                ref_clean = str(row['reference_number']).replace('\n', ' | ').strip()
+                if len(ref_clean) > 40:  # Shorter for mobile
+                    ref_clean = ref_clean[:40] + "..."
+                display_text += f" - {ref_clean}"
             
-            for _, row in df.iterrows():
-                # Create display text with estimate number and reference number
-                display_text = f"{row['estimate_number']}"
-                if row['reference_number'] and str(row['reference_number']).strip():
-                    # Clean up reference number (remove newlines, limit length)
-                    ref_clean = str(row['reference_number']).replace('\n', ' | ').strip()
-                    if len(ref_clean) > 60:
-                        ref_clean = ref_clean[:60] + "..."
-                    display_text += f" - {ref_clean}"
-                
-                dropdown_options.append(display_text)
-                option_map[display_text] = row['estimate_number']
-            
-            selected_option = st.selectbox(
-                "Select Estimate to Download", 
-                dropdown_options,
-                help="Choose an estimate to preview and download"
-            )
-            
-            # Get the actual estimate number from the selected option
-            selected = option_map.get(selected_option) if selected_option else None
+            dropdown_options.append(display_text)
+            option_map[display_text] = row['estimate_number']
         
-        with col2:
-            if selected:
-                estimate_row = df[df['estimate_number'] == selected].iloc[0]
-                st.metric("Total Amount", f"₹{estimate_row['total']:.2f}")
+        selected_option = st.selectbox(
+            "Select Estimate to Download", 
+            dropdown_options,
+            help="Choose an estimate to preview and download"
+        )
+        
+        # Get the actual estimate number from the selected option
+        selected = option_map.get(selected_option) if selected_option else None
+        
+        # Show total amount below dropdown for mobile
+        if selected:
+            estimate_row = df[df['estimate_number'] == selected].iloc[0]
+            st.info(f"💰 Estimate Amount: **₹{estimate_row['total']:.2f}**")
         
         if selected:
             estimate_row = df[df['estimate_number'] == selected].iloc[0]
             estimate_id = estimate_row['estimate_id']
             customer_name = estimate_row['customer_name']
             
-            # Show estimate details
-            # st.subheader(f"📄 Estimate Details: {selected}")
-            # detail_col1, detail_col2 = st.columns(2)
-            
-            # with detail_col1:
-            #     st.write(f"**Customer:** {estimate_row['reference_number']}")
-            # with detail_col2:
-            #     st.write(f"**Date:** {estimate_row['date']}")
-            
-            # st.divider()
+            st.divider()
             
             # Enhanced PDF download with error handling
             success, pdf_data, error_msg = PDFHandler.download_with_progress(
